@@ -1,0 +1,118 @@
+#pragma once
+#include<iostream>
+#include<semaphore.h>
+#include<sys/sem.h>
+#include<vector>
+#include<unistd.h>
+using namespace std;
+#define NUM 10
+
+class ringQueue
+{
+private:
+  vector<int> v;
+  int max_cap;
+  sem_t sem_blank;//队列中空格；生产者所关注
+  sem_t sem_data;//队列中数据；消费者所关注
+  int con_i;//生产者索引
+  int pro_i;//消费者索引
+public:
+  //P操作，等待信号量，会将信号量的值减1,请求资源
+  void P(sem_t &s)
+  {
+    sem_wait(&s);
+  }
+  //V操作，发布信号量，将信号量值加1，释放资源
+  void V(sem_t &s)
+  {
+    sem_post(&s);
+  }
+public:
+  ringQueue(int _cap=NUM):max_cap(_cap),v(_cap)
+  {
+    sem_init(&sem_blank,0,NUM);
+    sem_init(&sem_data,0,0);
+    con_i=0;pro_i=0;
+  }
+  ~ringQueue()
+  {
+    sem_destroy(&sem_blank);
+    sem_destroy(&sem_data);
+    con_i=pro_i=0;
+  }
+  //消费者消费；取出值
+  void Get(int &out)
+  {
+    //请求data资源并取出
+    P(sem_data);
+    out=v[con_i];
+    con_i++;
+    con_i%=max_cap;
+    //释放blank资源
+    V(sem_blank);
+  }
+  //生产者生产：放入值
+  void Put(const int &in)
+  {
+    //请求blank资源并放入数据
+    P(sem_blank);
+    v[pro_i]=in;
+    pro_i++;
+    pro_i%=max_cap;
+    //释放data资源
+    V(sem_data);
+  }
+};
+
+
+
+
+
+
+
+
+
+#include "ringQueue.h"
+using namespace std;
+
+void *consumer(void *ring_queue)
+{
+  ringQueue *rq=(ringQueue*)ring_queue;
+  while(true)
+  {
+    //sleep(1);
+    int data=1;
+    rq->Get(data);
+    cout<<"consumer done# "<<data<<endl;
+  }
+}
+void *productor(void *ring_queue)
+{
+  ringQueue *rq=(ringQueue*)ring_queue;
+  int count=0;
+  while(true)
+  {
+    sleep(1);
+    rq->Put(count);
+    count++;
+    if(count==9)
+    {
+      count=0;
+    }
+    cout<<"productor done!"<<endl;
+  }
+}
+int main()
+{
+  pthread_t con,pro;
+  ringQueue *rq=new ringQueue();
+
+  pthread_create(&con,nullptr,consumer,rq);
+  pthread_create(&pro,nullptr,productor,rq);
+
+  pthread_join(con,nullptr);
+  pthread_join(pro,nullptr);
+
+  return 0;
+}
+
