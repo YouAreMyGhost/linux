@@ -1,0 +1,105 @@
+#include<iostream>
+#include<string>
+#include<vector>
+#include<stdlib.h>
+#include<unistd.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<string.h>
+#include<signal.h>
+#define BACKLOG 5
+using namespace std;
+
+class httpServer
+{
+private:
+  int port;
+  int lsock;
+public:
+  httpServer(int _p):port(_p),lsock(-1)
+  {}
+  void initServer()
+  {
+    signal(SIGCHLD,SIG_IGN);
+    lsock=socket(AF_INET,SOCK_STREAM,0);
+    if(lsock < 0)
+    {
+      cerr<<"socket init error"<<endl;
+      exit(2);
+    }
+    struct sockaddr_in local;
+    //对缓冲区进行清零
+    bzero(&local,sizeof(local));
+    local.sin_family=AF_INET;
+    local.sin_port=htons(port);
+    local.sin_addr.s_addr=INADDR_ANY;
+
+    if(bind(lsock,(struct sockaddr*)&local,sizeof(local)) < 0)
+    {
+      cerr<<"socker bind error"<<endl;
+      exit(3);
+    }
+    if(listen(lsock,BACKLOG) < 0)
+    {
+      cerr<<"listen error"<<endl;
+      exit(4);
+    }
+  }
+  void echoHTTP(int sock)
+  {
+    char request[2048];
+    size_t s=recv(sock,request,sizeof(request),0);
+    if(s > 0)
+    {
+      request[s]=0;
+      cout<<request<<endl;
+
+      string response="HTTP/1.0 200 OK\r\n";
+      response+="Content-Type:text/html\r\n";
+      response+="\r\n";
+      response+="<!DOCTYPE html>\
+                 <html>\
+                 <head>\
+                 <title>my http</title>\
+                 </head>\
+                 <body>\
+                 <h1>my http</h1>\
+                 <p>hello world</p>\
+                 </body>\
+                 </html>\
+                 ";
+      send(sock,response.c_str(),response.size(),0);
+
+    }
+  }
+  void start()
+  {
+    struct sockaddr_in peer;
+    for(;;)
+    {
+      socklen_t len=sizeof(peer);
+      int sock=accept(lsock,(struct sockaddr*)&peer,&len);
+      if(sock < 0)
+      {
+        cerr<<"accept error"<<endl;
+        continue;
+      }
+      cout<<"get a new connect"<<endl;
+      if(fork() == 0)
+      {
+        close(lsock);
+        echoHTTP(sock);
+        exit(0);
+      }
+      close(sock);
+    }
+  }
+  ~httpServer()
+  {
+    if(lsock!=-1)
+    {
+      close(lsock);
+    }
+  }
+};
